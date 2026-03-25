@@ -45,7 +45,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
 loss_fn = nn.CrossEntropyLoss()
 
 # ---------------- TRAINING LOOP ----------------
-EPOCHS = 50 
+EPOCHS = 30 
 
 print(f"Starting training for {n_classes} classes...")
 

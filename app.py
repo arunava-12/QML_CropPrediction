@@ -40,8 +40,8 @@ def load_models():
 # ================= TITLE =================
 st.markdown("""
     <div style='text-align: center;'>
-        <h1>🌱 <strong>CropQast</strong></h1>
-        <h3>Quantum-Powered Crop Predictor 🌾</h3>
+        <h1>🌱 <strong>CropQuest</strong> 🌱</h1>
+        <h3>🌾 Quantum-Powered Crop Predictor 🌾</h3>
         <h4>Predict the Best Crop Based on Soil & Weather Conditions</h4>
     </div>
 """, unsafe_allow_html=True)
