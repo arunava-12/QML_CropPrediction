@@ -1,0 +1,8 @@
+pennylane
+streamlit
+numpy
+torch
+Pillow
+scikit-learn
+qiskit
+qiskit-aer
