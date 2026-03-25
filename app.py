@@ -146,15 +146,21 @@ if predict_clicked:
 
         if choice == "VQC":
             pred, probs = predict_vqc(features, vqc_model, vqc_scaler, vqc_class_names, True)
+
+            probs = np.array(probs).flatten()   # 🔥 FIX
             top3_idx = np.argsort(probs)[-3:][::-1]
-            top3 = [(vqc_class_names[i], probs[i]*100) for i in top3_idx]
+
+            top3 = [(vqc_class_names[int(i)], probs[int(i)] * 100) for i in top3_idx]
 
         elif choice == "QNN":
             arr = np.array(features).reshape(1, -1)
             pred, probs = predict_qnn(qnn_model, qnn_scaler, qnn_label_encoder, arr, True)
             classes = qnn_label_encoder.classes_
             top3_idx = np.argsort(probs)[-3:][::-1]
-            top3 = [(classes[i], probs[i]*100) for i in top3_idx]
+            probs = np.array(probs).flatten()   # 🔥 FIX
+            top3_idx = np.argsort(probs)[-3:][::-1]
+
+            top3 = [(classes[int(i)], probs[int(i)] * 100) for i in top3_idx]
 
         elif choice == "QKNN":
             pred, conf = predict_qknn(features, qknn_model, qknn_scaler, qknn_class_names)
@@ -171,7 +177,9 @@ if predict_clicked:
         st.markdown("### 🌾 Top Predictions")
 
         for i, (crop, confidence) in enumerate(top3, 1):
-            st.write(f"{i}. {crop} ({confidence:.2f}%)")
+            st.markdown(f"**{i}. {crop}**")
+            st.progress(int(confidence))
+            st.caption(f"{confidence:.2f}% confidence")
 
         best_crop = top3[0][0]
         img = load_crop_image(best_crop)
@@ -203,10 +211,12 @@ if compare_clicked:
 
         # Extract results
         vqc_pred, vqc_probs = results["VQC"]
+        vqc_probs = np.array(vqc_probs).flatten()
         vqc_conf = np.max(vqc_probs) * 100
 
         qnn_pred, qnn_probs = results["QNN"]
         qnn_pred = qnn_pred[0]
+        qnn_probs = np.array(qnn_probs).flatten()
         qnn_conf = np.max(qnn_probs) * 100
 
         qknn_pred, qknn_conf = results["QKNN"]
