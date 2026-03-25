@@ -2,12 +2,18 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 import os
+import pandas as pd
 
 from vqc.vqc_model import load_vqc_model, predict_vqc
 from qnn.qnn_model import load_qnn_model, predict_qnn
 from qknn.qknn_model import load_qknn_model, predict_qknn
 from qsvm.qsvm_model import load_qsvm_model, predict_qsvm
 from qreupload.qreupload_model import load_qreupload_model, predict_qreupload
+from concurrent.futures import ThreadPoolExecutor
+
+
+# ================= BASE PATH =================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 # ================= LOAD MODELS =================
@@ -28,13 +34,18 @@ def load_models():
     )
 
 
-(
-    vqc_model, vqc_scaler, vqc_class_names,
-    qnn_model, qnn_scaler, qnn_label_encoder,
-    qknn_model, qknn_scaler, qknn_class_names,
-    qsvm_model, qsvm_scaler, qsvm_classes,
-    qre_model, qre_scaler, qre_classes
-) = load_models()
+# ================= SAFE LOAD =================
+try:
+    (
+        vqc_model, vqc_scaler, vqc_class_names,
+        qnn_model, qnn_scaler, qnn_label_encoder,
+        qknn_model, qknn_scaler, qknn_class_names,
+        qsvm_model, qsvm_scaler, qsvm_classes,
+        qre_model, qre_scaler, qre_classes
+    ) = load_models()
+except Exception as e:
+    st.error(f"Error loading models: {e}")
+    st.stop()
 
 
 # ================= TITLE =================
@@ -110,14 +121,14 @@ humidity = col2.number_input("Humidity", value=82.0)
 
 col1, col2 = st.columns(2)
 ph = col1.number_input("pH", value=6.5)
-rainfall = col2.number_input("Rainfall", value=202.9)
+rainfall = col2.number_input("Rainfall", value=200.0)
 
 features = [N, P, K, temperature, humidity, ph, rainfall]
 
 
 # ================= IMAGE =================
 def load_crop_image(crop):
-    path = os.path.join("assets", f"{crop.lower()}.jpg")
+    path = os.path.join(BASE_DIR, "assets", f"{crop.lower()}.jpg")
     return Image.open(path) if os.path.exists(path) else None
 
 
@@ -129,66 +140,98 @@ compare_clicked = colB.button("Compare All Models ⚔️")
 
 # ================= PREDICT =================
 if predict_clicked:
+    with st.spinner("Running quantum models... ⚛️"):
 
-    choice = st.session_state.model_choice
+        choice = st.session_state.model_choice
 
-    if choice == "VQC":
-        pred, probs = predict_vqc(features, vqc_model, vqc_scaler, vqc_class_names, True)
-        conf = np.max(probs) * 100
+        if choice == "VQC":
+            pred, probs = predict_vqc(features, vqc_model, vqc_scaler, vqc_class_names, True)
+            top3_idx = np.argsort(probs)[-3:][::-1]
+            top3 = [(vqc_class_names[i], probs[i]*100) for i in top3_idx]
 
-    elif choice == "QNN":
-        arr = np.array(features).reshape(1, -1)
-        pred, probs = predict_qnn(qnn_model, qnn_scaler, qnn_label_encoder, arr, True)
-        pred = pred[0]
-        conf = np.max(probs) * 100
+        elif choice == "QNN":
+            arr = np.array(features).reshape(1, -1)
+            pred, probs = predict_qnn(qnn_model, qnn_scaler, qnn_label_encoder, arr, True)
+            classes = qnn_label_encoder.classes_
+            top3_idx = np.argsort(probs)[-3:][::-1]
+            top3 = [(classes[i], probs[i]*100) for i in top3_idx]
 
-    elif choice == "QKNN":
-        pred, conf = predict_qknn(features, qknn_model, qknn_scaler, qknn_class_names)
+        elif choice == "QKNN":
+            pred, conf = predict_qknn(features, qknn_model, qknn_scaler, qknn_class_names)
+            top3 = [(pred, conf)]
 
-    elif choice == "QSVM":
-        pred, conf = predict_qsvm(features, qsvm_model, qsvm_scaler, qsvm_classes)
+        elif choice == "QSVM":
+            pred, conf = predict_qsvm(features, qsvm_model, qsvm_scaler, qsvm_classes)
+            top3 = [(pred, conf)]
 
-    elif choice == "REUPLOAD":
-        pred, conf = predict_qreupload(features, qre_model, qre_scaler, qre_classes)
+        elif choice == "REUPLOAD":
+            pred, conf = predict_qreupload(features, qre_model, qre_scaler, qre_classes)
+            top3 = [(pred, conf)]
 
-    st.markdown("### Prediction")
-    st.success(f"{pred} ({conf:.2f}%)")
+        st.markdown("### 🌾 Top Predictions")
 
-    img = load_crop_image(pred)
-    if img:
-        st.image(img, use_container_width=True)
+        for i, (crop, confidence) in enumerate(top3, 1):
+            st.write(f"{i}. {crop} ({confidence:.2f}%)")
 
+        best_crop = top3[0][0]
+        img = load_crop_image(best_crop)
+
+        if img:
+            st.image(img, use_container_width=True)
+
+def run_all_models(features):
+    arr = np.array(features).reshape(1, -1)
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            "VQC": executor.submit(predict_vqc, features, vqc_model, vqc_scaler, vqc_class_names, True),
+            "QNN": executor.submit(predict_qnn, qnn_model, qnn_scaler, qnn_label_encoder, arr, True),
+            "QKNN": executor.submit(predict_qknn, features, qknn_model, qknn_scaler, qknn_class_names),
+            "QSVM": executor.submit(predict_qsvm, features, qsvm_model, qsvm_scaler, qsvm_classes),
+            "REUPLOAD": executor.submit(predict_qreupload, features, qre_model, qre_scaler, qre_classes),
+        }
+
+        results = {k: f.result() for k, f in futures.items()}
+
+    return results
 
 # ================= COMPARE =================
 if compare_clicked:
+    with st.spinner("Comparing quantum models... ⚔️"):
 
-    arr = np.array(features).reshape(1, -1)
+        results = run_all_models(features)
 
-    vqc_pred, vqc_probs = predict_vqc(features, vqc_model, vqc_scaler, vqc_class_names, True)
-    vqc_conf = np.max(vqc_probs) * 100
+        # Extract results
+        vqc_pred, vqc_probs = results["VQC"]
+        vqc_conf = np.max(vqc_probs) * 100
 
-    qnn_pred, qnn_probs = predict_qnn(qnn_model, qnn_scaler, qnn_label_encoder, arr, True)
-    qnn_pred = qnn_pred[0]
-    qnn_conf = np.max(qnn_probs) * 100
+        qnn_pred, qnn_probs = results["QNN"]
+        qnn_pred = qnn_pred[0]
+        qnn_conf = np.max(qnn_probs) * 100
 
-    qknn_pred, qknn_conf = predict_qknn(features, qknn_model, qknn_scaler, qknn_class_names)
+        qknn_pred, qknn_conf = results["QKNN"]
+        qsvm_pred, qsvm_conf = results["QSVM"]
+        qre_pred, qre_conf = results["REUPLOAD"]
 
-    qsvm_pred, qsvm_conf = predict_qsvm(features, qsvm_model, qsvm_scaler, qsvm_classes)
+        st.markdown("### 🏆 Model Leaderboard")
+        st.success("✅ Comparison complete!")
 
-    qre_pred, qre_conf = predict_qreupload(features, qre_model, qre_scaler, qre_classes)
+        leaderboard = [
+            ("VQC", vqc_pred, vqc_conf),
+            ("QNN", qnn_pred, qnn_conf),
+            ("QKNN", qknn_pred, qknn_conf),
+            ("QSVM", qsvm_pred, qsvm_conf),
+            ("ReUpload", qre_pred, qre_conf),
+        ]
 
-    st.markdown("### Model Comparison")
+        leaderboard = sorted(leaderboard, key=lambda x: x[2], reverse=True)
 
-    st.write(f"VQC → {vqc_pred} ({vqc_conf:.2f}%)")
-    st.write(f"QNN → {qnn_pred} ({qnn_conf:.2f}%)")
-    st.write(f"QKNN → {qknn_pred} ({qknn_conf:.2f}%)")
-    st.write(f"QSVM → {qsvm_pred} ({qsvm_conf:.2f}%)")
-    st.write(f"ReUpload → {qre_pred} ({qre_conf:.2f}%)")
+        for rank, (model, pred, conf) in enumerate(leaderboard, 1):
+            st.write(f"{rank}. {model} → {pred} ({conf:.2f}%)")
 
-    st.bar_chart({
-        "VQC": vqc_conf,
-        "QNN": qnn_conf,
-        "QKNN": qknn_conf,
-        "QSVM": qsvm_conf,
-        "ReUpload": qre_conf
-    })
+        df = pd.DataFrame({
+            "Model": [m[0] for m in leaderboard],
+            "Confidence": [m[2] for m in leaderboard]
+        })
+
+        st.bar_chart(df.set_index("Model"))
