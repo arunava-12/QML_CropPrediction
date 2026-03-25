@@ -185,7 +185,7 @@ if predict_clicked:
         img = load_crop_image(best_crop)
 
         if img:
-            st.image(img, use_container_width=True)
+            st.image(img, use_column_width=True)
 
 def run_all_models(features):
     arr = np.array(features).reshape(1, -1)
