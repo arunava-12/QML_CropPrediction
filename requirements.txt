@@ -7,3 +7,6 @@ pennylane==0.34.0
 autoray==0.6.7
 qiskit==0.46.0
 qiskit-aer==0.13.3
+pandas
+seaborn
+matplotlib
